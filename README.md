@@ -440,9 +440,55 @@ performance:
 
 ---
 
-## 九、参考资料
+## 九、Docker 代理架构详解
+
+### 9.1 核心设计理念
+
+llama-swap 采用 **反向代理 + 进程管理** 的架构模式，实现推理请求的透明转发：
+
+```
+用户请求 → llama-swap (代理层) → 上游推理服务 (llama-server/sd-server等)
+                ↓
+         1. 解析请求中的 model 参数
+         2. 查找对应的模型配置
+         3. 检查/启动/切换进程
+         4. 通过 httputil.ReverseProxy 转发请求
+         5. 响应透明返回给用户
+```
+
+**关键点**：
+- **代理层不处理推理**：llama-swap 只负责路由、进程管理和请求转发
+- **真正的处理在底层服务**：llama-server、sd-server 等进程负责实际推理
+- **无缝衔接**：通过 HTTP 反向代理实现透明的请求转发
+
+### 9.2 Docker 配置详解
+
+| 文件 | 功能 |
+|------|------|
+| `docker/config.example.yaml` | 模型配置示例，定义 cmd、proxy、checkEndpoint |
+| `docker/llama-swap.Containerfile` | 基础容器定义，包含 llama-swap + llama-server |
+| `docker/llama-swap-sd.Containerfile` | 扩展容器，添加 stable-diffusion.cpp |
+| `docker/build-container.sh` | 多架构构建脚本 (cuda/rocm/cpu/vulkan等) |
+| `docker/unified/Dockerfile` | 统一容器，集成 LLM/图像/语音服务 |
+| `docker/unified/config.example.yaml` | 统一容器配置示例 |
+
+### 9.3 实现底层推理服务的条件
+
+要实现自己的底层推理服务，需要满足：
+
+1. **HTTP 服务接口**：监听指定端口
+2. **OpenAI API 兼容**：实现 `/v1/chat/completions` 等端点
+3. **健康检查端点**：`GET /health` 返回 HTTP 200
+4. **流式响应支持**（可选）：SSE 格式输出
+
+详细架构文档请参阅：**`docker/ARCHITECTURE.md`**
+
+---
+
+## 十、参考资料
 
 - 项目地址: https://github.com/mostlygeek/llama-swap
 - 配置文档: `docs/configuration.md`
 - Docker 构建: `docker/`
 - 容器安全: `docs/container-security.md`
+- 代理架构详解: `docker/ARCHITECTURE.md`
